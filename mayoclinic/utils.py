@@ -137,7 +137,7 @@ class SlideManager():
     def refine_foreground(self, foreground_map, n_cpus=1):
         fg_ids = np.where(foreground_map)
         yxs = np.vstack(fg_ids).T
-        
+
         with mproc.Pool(n_cpus) as pool:
             is_fg = pool.starmap(self.region_is_fg, yxs)
         yxs_refined = yxs[is_fg]    
@@ -189,12 +189,12 @@ class SlideManager():
             return foreground_map
         else:
             
-#             img = np.moveaxis(downscaled, 0, -1)
+
             _, foreground_map = self.thresholding(downscaled, **self.slide_thresh_params)
             
             # Exclude border patches from foreground to avoid regions of different size.
             # Can be done more elegantly with padding, but probably don't worth it now.
-            
+            # foreground_map = np.ones(downscaled.shape[1:3]).astype(np.uint8)
             foreground_map = self.refine_foreground(foreground_map, n_cpus=n_cpus)
 
             foreground_map[:,-1] = 0
