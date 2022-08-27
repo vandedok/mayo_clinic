@@ -56,7 +56,7 @@ class SlideManager():
         self.slide_thresh_params = slide_thresh_params
         self.tile_bg_brightness_int = np.round(tile_bg_brightness * 255).astype(int)
         
-    def new_slide(self, slide_path, foreground_map_path=None, 
+    def new_slide(self, slide_path, foreground_map_path=None, downscaled_path=None,
         n_cpus=1):
         
         self.slide_path = slide_path
@@ -64,8 +64,15 @@ class SlideManager():
             self.size_yx = (slide.height, slide.width)
         self.grid_size_yx = tuple(int(np.ceil(s / w)) for s, w in zip(self.size_yx, self.window_yx))
         
-        self.downscaled = self.get_downscaled_slide(slide_path)
-        self.foreground_map = self.detect_foreground(self.downscaled,foreground_map_path, n_cpus=n_cpus)
+        if downscaled_path:
+            self.downscaled = np.load(foreground_map_path, allow_pickle=False)
+        else:
+            self.downscaled = self.get_downscaled_slide(slide_path)
+        
+        if foreground_map_path:
+            self.foreground_map = np.load(foreground_map_path, allow_pickle=False)
+        else:
+            self.foreground_map = self.detect_foreground(self.downscaled, n_cpus=n_cpus)
 
         
     def get_region_borders(self, grid_y, grid_x):
@@ -180,25 +187,20 @@ class SlideManager():
     def detect_foreground(
         self, 
         downscaled,
-        foreground_map_path=None,
         n_cpus=1,
     ):
         
-        if foreground_map_path:
-            foreground_map = np.load(foreground_map_path)
-            return foreground_map
-        else:
-            
+          
 
-            _, foreground_map = self.thresholding(downscaled, **self.slide_thresh_params)
-            
-            # Exclude border patches from foreground to avoid regions of different size.
-            # Can be done more elegantly with padding, but probably don't worth it now.
-            # foreground_map = np.ones(downscaled.shape[1:3]).astype(np.uint8)
-            foreground_map = self.refine_foreground(foreground_map, n_cpus=n_cpus)
+        _, foreground_map = self.thresholding(downscaled, **self.slide_thresh_params)
 
-            foreground_map[:,-1] = 0
-            foreground_map[-1,:] = 0
+        # Exclude border patches from foreground to avoid regions of different size.
+        # Can be done more elegantly with padding, but probably don't worth it now.
+        # foreground_map = np.ones(downscaled.shape[1:3]).astype(np.uint8)
+        foreground_map = self.refine_foreground(foreground_map, n_cpus=n_cpus)
 
-            return foreground_map
+        foreground_map[:,-1] = 0
+        foreground_map[-1,:] = 0
+
+        return foreground_map
     
