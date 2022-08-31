@@ -33,6 +33,7 @@ class MayoPredictor(nn.Module):
             self.embedding_size = self.get_embedding_size()
         self.progress_bar=progress_bar
         self.device = device
+        self.fine_model.to(device)
         self.fine_model.eval()
        
         

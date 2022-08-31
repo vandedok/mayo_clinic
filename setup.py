@@ -6,5 +6,6 @@ setup(
     packages=find_packages(include=["mayoclinic"]),
     install_requires=[
        'rasterio',
+       'timm'
     ]
 )

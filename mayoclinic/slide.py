@@ -65,7 +65,7 @@ class SlideManager():
         self.grid_size_yx = tuple(int(np.ceil(s / w)) for s, w in zip(self.size_yx, self.window_yx))
         
         if downscaled_path:
-            self.downscaled = np.load(foreground_map_path, allow_pickle=False)
+            self.downscaled = np.load(downscaled_path, allow_pickle=False)
         else:
             self.downscaled = self.get_downscaled_slide(slide_path)
         
