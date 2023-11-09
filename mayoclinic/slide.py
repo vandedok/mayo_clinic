@@ -1,3 +1,4 @@
+from logging import getLogger
 import multiprocessing as mproc
 from PIL import Image
 import rasterio
@@ -6,6 +7,7 @@ import numpy as np
 import cv2
 import pandas as pd
 
+logger = getLogger()
 
 def get_thumbnail(slide_path, thumbnail_max_size=500):
     slide_PIL = Image.open(slide_path)
@@ -39,7 +41,7 @@ class SlideManager():
         window_yx=(256,256), 
         tile_fg_criterion = 0.1,
         tile_bg_brightness = 0.1,
-        slide_thresh_params = {
+        slide_adaptive_thresh_params = {
             "local": True,
             "block_size_factor": 0.05,
             "offset":10,
@@ -47,32 +49,50 @@ class SlideManager():
             "erode_kernel": np.ones((5,5))
             
         },
+        tile_thresh = 0,
+        verbose=False,
     ):
         
 
         self.window_yx = window_yx
         self.tile_fg_criterion = tile_fg_criterion
         self.slide_path = None
-        self.slide_thresh_params = slide_thresh_params
+        self.slide_adaptive_thresh_params = slide_adaptive_thresh_params
         self.tile_bg_brightness_int = np.round(tile_bg_brightness * 255).astype(int)
-        
+        self.tile_thresh = tile_thresh
+        self.verbose = verbose
+
+    def log(self,msg):
+        if self.verbose:
+            print(msg)
+
     def new_slide(self, slide_path, foreground_map_path=None, downscaled_path=None,
         n_cpus=1):
         
+
         self.slide_path = slide_path
         with rasterio.open(slide_path) as slide:
             self.size_yx = (slide.height, slide.width)
         self.grid_size_yx = tuple(int(np.ceil(s / w)) for s, w in zip(self.size_yx, self.window_yx))
         
-        if downscaled_path:
-            self.downscaled = np.load(downscaled_path, allow_pickle=False)
-        else:
-            self.downscaled = self.get_downscaled_slide(slide_path)
         
-        if foreground_map_path:
-            self.foreground_map = np.load(foreground_map_path, allow_pickle=False)
+        if downscaled_path:
+            self.log("Loading downscaled slide...")
+            self.downscaled = np.load(downscaled_path, allow_pickle=False)
+            self.log("Done!")
         else:
+            self.log("Getting downscaled scan...")
+            self.downscaled = self.get_downscaled_slide(slide_path)
+            self.log("Done!")
+
+        if foreground_map_path:
+            self.log("Loading foreground map...")
+            self.foreground_map = np.load(foreground_map_path, allow_pickle=False)
+            self.log("Done!")
+        else:
+            self.log("Creating foreground map...")
             self.foreground_map = self.detect_foreground(self.downscaled, n_cpus=n_cpus)
+            self.log("Done!")
 
         
     def get_region_borders(self, grid_y, grid_x):
@@ -153,7 +173,7 @@ class SlideManager():
         refined_map = cv2.dilate(refined_map, kernel=np.ones((2,2)))
         return refined_map
     
-    def thresholding(
+    def adaptive_thresholding(
         self, 
         img,
         block_size_factor=0.05, 
@@ -171,17 +191,18 @@ class SlideManager():
             thresh_block_size += 1
         if thresh_block_size == 1:
             thresh_block_size = 3
-        thresh = cv2.adaptiveThreshold(
-            img, 
-            255,
-            cv2.ADAPTIVE_THRESH_MEAN_C, 
-            cv2.THRESH_BINARY_INV, 
-            thresh_block_size, 
-            offset
-        )
+        # thresh = cv2.adaptiveThreshold(
+        #     img, 
+        #     255,
+        #     cv2.ADAPTIVE_THRESH_MEAN_C, 
+        #     cv2.THRESH_BINARY_INV, 
+        #     thresh_block_size, 
+        #     offset
+        # )
      
-        img = (img < thresh).astype(np.uint8)  
-        foreground_map = cv2.dilate(img, kernel=erode_kernel, iterations=erode_n_it)
+        # img = (img < thresh).astype(np.uint8)  
+        # foreground_map = cv2.dilate(img, kernel=erode_kernel, iterations=erode_n_it)
+        foreground_map = img >  self.tile_thresh
         return thresh, foreground_map
     
     def detect_foreground(
@@ -190,15 +211,15 @@ class SlideManager():
         n_cpus=1,
     ):
         
-          
+        # _, foreground_map = self.adaptive_thresholding(downscaled, **self.slide_adaptive_thresh_params)
+        
+        # # Exclude border patches from foreground to avoid regions of different size.
+        # # Can be done more elegantly with padding, but probably don't worth it now.
+        # # foreground_map = np.ones(downscaled.shape[1:3]).astype(np.uint8)
+        # foreground_map = self.refine_foreground(foreground_map, n_cpus=n_cpus)
 
-        _, foreground_map = self.thresholding(downscaled, **self.slide_thresh_params)
-
-        # Exclude border patches from foreground to avoid regions of different size.
-        # Can be done more elegantly with padding, but probably don't worth it now.
-        # foreground_map = np.ones(downscaled.shape[1:3]).astype(np.uint8)
-        foreground_map = self.refine_foreground(foreground_map, n_cpus=n_cpus)
-
+        foreground_map = (downscaled.mean(axis=0) > self.tile_thresh).astype(np.uint8)
+        foreground_map = cv2.dilate(foreground_map, kernel=np.ones((2,2)))
         foreground_map[:,-1] = 0
         foreground_map[-1,:] = 0
 
