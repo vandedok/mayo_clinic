@@ -124,8 +124,14 @@ class SlideManager():
         '''
         grid_yxs: list of (x,y)
         '''
-        with mproc.Pool(n_cpus) as pool:
-            regions = pool.starmap(self.get_region, grid_yxs)
+
+        if n_cpus == 1:
+            regions = []
+            for yx in grid_yxs:
+                regions.append(self.get_region(yx[0], yx[1]))
+        else:    
+            with mproc.Pool(n_cpus) as pool:
+                regions = pool.starmap(self.get_region, grid_yxs)
         regions = np.stack(regions)
         
         return regions
@@ -161,49 +167,49 @@ class SlideManager():
         else:
             return False        
     
-    def refine_foreground(self, foreground_map, n_cpus=1):
-        fg_ids = np.where(foreground_map)
-        yxs = np.vstack(fg_ids).T
+    # def refine_foreground(self, foreground_map, n_cpus=1):
+    #     fg_ids = np.where(foreground_map)
+    #     yxs = np.vstack(fg_ids).T
 
-        with mproc.Pool(n_cpus) as pool:
-            is_fg = pool.starmap(self.region_is_fg, yxs)
-        yxs_refined = yxs[is_fg]    
-        refined_map = np.zeros_like(foreground_map)
-        refined_map[(yxs_refined[:,0], yxs_refined[:,1])] = 1
-        refined_map = cv2.dilate(refined_map, kernel=np.ones((2,2)))
-        return refined_map
+    #     with mproc.Pool(n_cpus) as pool:
+    #         is_fg = pool.starmap(self.region_is_fg, yxs)
+    #     yxs_refined = yxs[is_fg]    
+    #     refined_map = np.zeros_like(foreground_map)
+    #     refined_map[(yxs_refined[:,0], yxs_refined[:,1])] = 1
+    #     refined_map = cv2.dilate(refined_map, kernel=np.ones((2,2)))
+    #     return refined_map
     
-    def adaptive_thresholding(
-        self, 
-        img,
-        block_size_factor=0.05, 
-        erode_kernel = np.ones((5,5)), 
-        offset = 10, 
-        erode_n_it = 1
-    ):
+    # def adaptive_thresholding(
+    #     self, 
+    #     img,
+    #     block_size_factor=0.05, 
+    #     erode_kernel = np.ones((5,5)), 
+    #     offset = 10, 
+    #     erode_n_it = 1
+    # ):
 
-        img = np.moveaxis(img, 0, -1)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        img = cv2.GaussianBlur(img, (7, 7), 0)
+    #     img = np.moveaxis(img, 0, -1)
+    #     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    #     img = cv2.GaussianBlur(img, (7, 7), 0)
         
-        thresh_block_size = int(max(img.shape[0]*block_size_factor, img.shape[1]*block_size_factor))
-        if thresh_block_size % 2 == 0:
-            thresh_block_size += 1
-        if thresh_block_size == 1:
-            thresh_block_size = 3
-        # thresh = cv2.adaptiveThreshold(
-        #     img, 
-        #     255,
-        #     cv2.ADAPTIVE_THRESH_MEAN_C, 
-        #     cv2.THRESH_BINARY_INV, 
-        #     thresh_block_size, 
-        #     offset
-        # )
+    #     thresh_block_size = int(max(img.shape[0]*block_size_factor, img.shape[1]*block_size_factor))
+    #     if thresh_block_size % 2 == 0:
+    #         thresh_block_size += 1
+    #     if thresh_block_size == 1:
+    #         thresh_block_size = 3
+    #     # thresh = cv2.adaptiveThreshold(
+    #     #     img, 
+    #     #     255,
+    #     #     cv2.ADAPTIVE_THRESH_MEAN_C, 
+    #     #     cv2.THRESH_BINARY_INV, 
+    #     #     thresh_block_size, 
+    #     #     offset
+    #     # )
      
-        # img = (img < thresh).astype(np.uint8)  
-        # foreground_map = cv2.dilate(img, kernel=erode_kernel, iterations=erode_n_it)
-        foreground_map = img >  self.tile_thresh
-        return thresh, foreground_map
+    #     # img = (img < thresh).astype(np.uint8)  
+    #     # foreground_map = cv2.dilate(img, kernel=erode_kernel, iterations=erode_n_it)
+    #     foreground_map = img >  self.tile_thresh
+    #     return thresh, foreground_map
     
     def detect_foreground(
         self, 
